@@ -28,7 +28,7 @@ class DroidBot(object):
     def __init__(self, app_path=None, device_serial=None, is_emulator=False, output_dir=None, env_policy=None,
                  policy_name=None, random_input=False, script_path=None, event_count=None, event_interval=None,
                  timeout=None, keep_app=None, keep_env=False, cv_mode=False, uiautomator_mode=False, debug_mode=False,
-                 profiling_method=None, grant_perm=False, enable_accessibility_hard=False, master=None, humanoid=None,
+                 profiling_method=None, grant_perm=True, enable_accessibility_hard=False, master=None, humanoid=None,
                  ignore_ad=False, replay_output=None, config_script_path=None, ignore_windows_script_path=None,
                  max_random_seed_test_length=0, max_seed_test_suite_size=0, max_independent_trace_length=0,
                  max_mutants_per_seed_test=0, max_mutants_per_insertion_position=0,

@@ -6,6 +6,8 @@ import sys
 import time
 import json
 
+from droidbot.input_event import IntentEvent
+
 from .adapter.adb import ADB
 from .adapter.droidbot_app import DroidBotAppConn
 from .adapter.uiautomator import UiautomatorWrapperConn
@@ -30,13 +32,13 @@ class Device(object):
     unique_screenshot_id = 0
 
     def __init__(self, device_serial=None, is_emulator=False, output_dir=None, app_package_name=None,
-                 cv_mode=False, uiautomator_mode=False, grant_perm=False, telnet_auth_token=None,
+                 cv_mode=False, uiautomator_mode=False, grant_perm=True, telnet_auth_token=None,
                  enable_accessibility_hard=False, humanoid=None, ignore_ad=False, ignore_views=None,
                  enable_parallel_mode=False, utg_abstraction_strategy=None, policy_name=None,
                  view_context_str_backtrack_level=None):
         """
         initialize a device connection
-        :param device_serial: serial number of target device
+        :param device_serial: serial number of target devissssce
         :param is_emulator: boolean, type of device, True for emulator, False for real device
         :return:
         """
@@ -146,6 +148,21 @@ class Device(object):
         """
         self.logger.info("waiting for device")
         try:
+            subprocess.check_call(["adb", "-s", self.serial, "wait-for-device"])
+            print(f"running adb as root >>>>>>>>>>")
+            time.sleep(10)
+            # subprocess.Popen(["adb", "root"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            p = subprocess.Popen(["adb", "-s", self.serial, "root"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+            while True:
+                line = p.stdout.readline()
+                if not line:
+                    break
+                if not isinstance(line, str):
+                    line = line.decode()
+                print(line)
+            time.sleep(10)
+            print(f"adb is now root >>>>>>>>>>")
             subprocess.check_call(["adb", "-s", self.serial, "wait-for-device"])
             # while True:
             #     out = subprocess.check_output(
@@ -503,7 +520,14 @@ class Device(object):
             cmd = intent.get_cmd()
         else:
             cmd = intent
-        return self.adb.shell(cmd)
+        output = self.adb.shell(cmd)
+        print(f"send_intent: intent content is >>>>>>> {intent}")
+        if "start" in intent:
+            # am start org.sipdroid.sipua/org.sipdroid.sipua.ui.Sipdroid
+            package_name = (intent.split("start")[1].strip()).split("/")[0]
+            print(f"send_intent: pkg name is >>>>>>> {package_name}")
+            self.instrument_app(package_name)
+        return output
 
     def send_event(self, event):
         """
@@ -512,6 +536,15 @@ class Device(object):
         :return:
         """
         event.send(self)
+        print(f"send_event: send event type is >>>>>>>> {type(event)}")
+        if type(event) is IntentEvent:
+            intent = event.intent
+            print(f"send_event: intent content is >>>>>>> {intent}")
+            if "start" in intent:
+                # am start org.sipdroid.sipua/org.sipdroid.sipua.ui.Sipdroid
+                package_name = (intent.split("start")[1].strip()).split("/")[0]
+                print(f"send_event: pkg name is >>>>>>> {package_name}")
+                self.instrument_app(package_name)
 
     def start_app(self, app):
         """
@@ -530,6 +563,7 @@ class Device(object):
             return
         intent = Intent(suffix=package_name)
         self.send_intent(intent)
+        self.instrument_app(package_name)
 
     def dump_coverage(self, remote_coverage_data_file_path, local_coverage_data_file_path):
         intent = Intent(prefix='broadcast', action='edu.gatech.m3.emma.COLLECT_COVERAGE')
@@ -672,6 +706,10 @@ class Device(object):
         @return:
         """
         assert isinstance(app, App)
+
+        # subprocess.Popen(["adb", "root"], stdout=subprocess.PIPE)
+
+
         # subprocess.check_call(["adb", "-s", self.serial, "uninstall", app.get_package_name()],
         #                       stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         package_name = app.get_package_name()
@@ -712,6 +750,66 @@ class Device(object):
         if self.grant_perm:
             # collect runtime permissions of the current app only when the app was installed with -g
             self.collect_granted_runtime_permissions()
+        
+        self.start_frida_and_instrument_app(package_name)
+
+    def start_frida_and_instrument_app(self, package_name):
+        # return
+        try:
+            self.adb.shell('pkill -f "frida-server"')
+        except Exception as e:
+            print(f"Error while killing fridas server {e}")
+
+        push_frida_cmd = ["adb", "-s", self.serial, "push", "/Users/kishanthan/Work/reserach/gui_fuzzing/frida/frida-server", "/data/local/tmp/"]
+        chmod_frida_cmd = ["adb", "-s", self.serial, "shell", "chmod 755 /data/local/tmp/frida-server"]
+        start_frida_cmd = ["adb", "-s", self.serial, "shell", "nohup /data/local/tmp/frida-server > /dev/null 2>&1 &"]
+
+        print("pushing frida")
+        subprocess.Popen(push_frida_cmd, stdout=subprocess.PIPE)
+        time.sleep(10)
+        print("chmod frida")
+        subprocess.Popen(chmod_frida_cmd, stdout=subprocess.PIPE)
+        time.sleep(10)
+        
+
+        
+
+        print("starting frida")
+        run_frid_cmd = subprocess.Popen(start_frida_cmd, stdout=subprocess.PIPE)
+        # run_frid_cmd = self.adb.shell("/data/local/tmp/frida-server &")
+        time.sleep(10)
+
+        # self.adb.shell("/data/local/tmp/frida-server &")
+        while True :
+            line = run_frid_cmd.stdout.readline()
+            if not line:
+                break
+            if not isinstance(line, str):
+                line = line.decode()
+                print(f"frida_run: {line}")
+
+        # print(f"instumenting app {package_name} for frida")
+        # instrument_app_for_frida_cmd = ["nohup", "frida", "-U",  "-l", "/Users/kishanthan/Work/reserach/gui_fuzzing/frida/hooks/hook_onstart.js", "-f", package_name]
+
+        # # Open a file to redirect stdout and stderr
+        # with open('output.txt', 'w') as outfile:
+        #     # Start the process
+        #     p_ins_app_for_frida = subprocess.Popen(instrument_app_for_frida_cmd, stdout=outfile, stderr=outfile, preexec_fn=os.setpgrp)
+
+        # print(f"instumented app {package_name} for frida")
+
+    def instrument_app(self, package_name):
+        return
+        print(f"instumenting app {package_name} for frida")
+        instrument_app_for_frida_cmd = ["nohup", "frida", "-U",  "-l", "/Users/kishanthan/Work/reserach/gui_fuzzing/frida/hooks/hook_onstart.js", "-f", package_name]
+
+        # Open a file to redirect stdout and stderr
+        with open('output.txt', 'a') as outfile:
+            # Start the process
+            p_ins_app_for_frida = subprocess.Popen(instrument_app_for_frida_cmd, stdout=outfile, stderr=outfile, preexec_fn=os.setpgrp)
+
+        print(f"instumented app {package_name} for frida")
+
 
     # collect runtime permissions
     def collect_granted_runtime_permissions(self):

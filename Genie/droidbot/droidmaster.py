@@ -58,7 +58,7 @@ class DroidMaster(object):
                  cv_mode=False,
                  debug_mode=False,
                  profiling_method=None,
-                 grant_perm=False,
+                 grant_perm=True,
                  enable_accessibility_hard=False,
                  qemu_hda=None,
                  qemu_no_graphic=False,

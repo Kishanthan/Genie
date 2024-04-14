@@ -40,7 +40,7 @@ class DroidBotConn(Adapter):
                  cv_mode=False,
                  debug_mode=False,
                  profiling_method=None,
-                 grant_perm=False,
+                 grant_perm=True,
                  enable_accessibility_hard=False,
                  master=None,
                  humanoid=None,
